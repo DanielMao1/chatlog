@@ -13,9 +13,9 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sys/windows"
 
-	"github.com/sjzar/chatlog/internal/errors"
-	"github.com/sjzar/chatlog/internal/wechat/model"
-	"github.com/sjzar/chatlog/pkg/util"
+	"github.com/DanielMao1/chatlog/internal/errors"
+	"github.com/DanielMao1/chatlog/internal/wechat/model"
+	"github.com/DanielMao1/chatlog/pkg/util"
 )
 
 const (

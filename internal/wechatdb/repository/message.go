@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sjzar/chatlog/internal/model"
-	"github.com/sjzar/chatlog/pkg/util"
+	"github.com/DanielMao1/chatlog/internal/model"
+	"github.com/DanielMao1/chatlog/pkg/util"
 
 	"github.com/rs/zerolog/log"
 )

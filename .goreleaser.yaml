@@ -9,7 +9,7 @@ builds:
   - id: chatlog-builds
     binary: chatlog
     ldflags:
-      - -s -w -X github.com/sjzar/chatlog/pkg/version.Version={{.Version}}
+      - -s -w -X github.com/DanielMao1/chatlog/pkg/version.Version={{.Version}}
     env:
       - CGO_ENABLED=1
     goos:
@@ -105,8 +105,8 @@ dockers:
       - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.description=chat log tool, easily use your own chat data."
-      - "--label=org.opencontainers.image.url=https://github.com/sjzar/chatlog"
-      - "--label=org.opencontainers.image.source=https://github.com/sjzar/chatlog"
+      - "--label=org.opencontainers.image.url=https://github.com/DanielMao1/chatlog"
+      - "--label=org.opencontainers.image.source=https://github.com/DanielMao1/chatlog"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -125,8 +125,8 @@ dockers:
       - "--platform=linux/arm64"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.description=chat log tool, easily use your own chat data."
-      - "--label=org.opencontainers.image.url=https://github.com/sjzar/chatlog"
-      - "--label=org.opencontainers.image.source=https://github.com/sjzar/chatlog"
+      - "--label=org.opencontainers.image.url=https://github.com/DanielMao1/chatlog"
+      - "--label=org.opencontainers.image.source=https://github.com/DanielMao1/chatlog"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"

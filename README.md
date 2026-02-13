@@ -6,10 +6,10 @@ _聊天记录工具，帮助大家轻松使用自己的聊天数据_
 
 [![ImgMCP](https://cdn.imgmcp.com/imgmcp-logo-small.png)](https://imgmcp.com)
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/sjzar/chatlog)](https://goreportcard.com/report/github.com/sjzar/chatlog)
-[![GoDoc](https://godoc.org/github.com/sjzar/chatlog?status.svg)](https://godoc.org/github.com/sjzar/chatlog)
-[![GitHub release](https://img.shields.io/github/release/sjzar/chatlog.svg)](https://github.com/sjzar/chatlog/releases)
-[![GitHub license](https://img.shields.io/github/license/sjzar/chatlog.svg)](https://github.com/sjzar/chatlog/blob/main/LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/DanielMao1/chatlog)](https://goreportcard.com/report/github.com/DanielMao1/chatlog)
+[![GoDoc](https://godoc.org/github.com/DanielMao1/chatlog?status.svg)](https://godoc.org/github.com/DanielMao1/chatlog)
+[![GitHub release](https://img.shields.io/github/release/sjzar/chatlog.svg)](https://github.com/DanielMao1/chatlog/releases)
+[![GitHub license](https://img.shields.io/github/license/sjzar/chatlog.svg)](https://github.com/DanielMao1/chatlog/blob/main/LICENSE)
 
 
 </div>
@@ -43,21 +43,21 @@ _聊天记录工具，帮助大家轻松使用自己的聊天数据_
 - **macOS 用户**：获取密钥前需[临时关闭 SIP](#macos-版本说明)
 - **Windows 用户**：遇到界面显示问题请[使用 Windows Terminal](#windows-版本说明)
 - **集成 AI 助手**：查看 [MCP 集成指南](#mcp-集成)
-- **无法获取密钥**：查看 [FAQ](https://github.com/sjzar/chatlog/issues/197)
+- **无法获取密钥**：查看 [FAQ](https://github.com/DanielMao1/chatlog/issues/197)
 
 ## 安装指南
 
 ### 从源码安装
 
 ```bash
-go install github.com/sjzar/chatlog@latest
+go install github.com/DanielMao1/chatlog@latest
 ```
 
 > 💡 **提示**: 部分功能有 cgo 依赖，编译前需确认本地有 C 编译环境。
 
 ### 下载预编译版本
 
-访问 [Releases](https://github.com/sjzar/chatlog/releases) 页面下载适合您系统的预编译版本。
+访问 [Releases](https://github.com/DanielMao1/chatlog/releases) 页面下载适合您系统的预编译版本。
 
 ## 使用指南
 
@@ -323,7 +323,7 @@ Chatlog 可以与多种支持 MCP 的 AI 助手集成，包括：
 
 查看 [Prompt 指南](docs/prompt.md) 获取详细示例。
 
-同时欢迎大家分享使用经验和 prompt！如果您有好的 prompt 示例或使用技巧，请通过 [Discussions](https://github.com/sjzar/chatlog/discussions) 进行分享，共同进步。
+同时欢迎大家分享使用经验和 prompt！如果您有好的 prompt 示例或使用技巧，请通过 [Discussions](https://github.com/DanielMao1/chatlog/discussions) 进行分享，共同进步。
 
 ## 免责声明
 

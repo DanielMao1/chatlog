@@ -1,21 +1,26 @@
 package chatlog
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog/log"
-	"github.com/sjzar/chatlog/internal/chatlog/conf"
-	"github.com/sjzar/chatlog/internal/chatlog/ctx"
-	"github.com/sjzar/chatlog/internal/chatlog/database"
-	"github.com/sjzar/chatlog/internal/chatlog/http"
-	"github.com/sjzar/chatlog/internal/chatlog/wechat"
-	iwechat "github.com/sjzar/chatlog/internal/wechat"
-	"github.com/sjzar/chatlog/pkg/config"
-	"github.com/sjzar/chatlog/pkg/util"
-	"github.com/sjzar/chatlog/pkg/util/dat2img"
+	"github.com/DanielMao1/chatlog/internal/chatlog/conf"
+	"github.com/DanielMao1/chatlog/internal/chatlog/ctx"
+	"github.com/DanielMao1/chatlog/internal/chatlog/database"
+	chathttp "github.com/DanielMao1/chatlog/internal/chatlog/http"
+	"github.com/DanielMao1/chatlog/internal/chatlog/wechat"
+	"github.com/DanielMao1/chatlog/internal/model"
+	iwechat "github.com/DanielMao1/chatlog/internal/wechat"
+	"github.com/DanielMao1/chatlog/pkg/config"
+	"github.com/DanielMao1/chatlog/pkg/util"
+	"github.com/DanielMao1/chatlog/pkg/util/dat2img"
 )
 
 // Manager 管理聊天日志应用
@@ -26,7 +31,7 @@ type Manager struct {
 
 	// Services
 	db     *database.Service
-	http   *http.Service
+	http   *chathttp.Service
 	wechat *wechat.Service
 
 	// Terminal UI
@@ -49,7 +54,7 @@ func (m *Manager) Run(configPath string) error {
 
 	m.db = database.NewService(m.ctx)
 
-	m.http = http.NewService(m.ctx, m.db)
+	m.http = chathttp.NewService(m.ctx, m.db)
 
 	m.ctx.WeChatInstances = m.wechat.GetWeChatInstances()
 	if len(m.ctx.WeChatInstances) >= 1 {
@@ -240,6 +245,81 @@ func (m *Manager) RefreshSession() error {
 	return nil
 }
 
+func (m *Manager) SummarizeFileHelper() (string, error) {
+	// Ensure database is started
+	if m.db.GetDB() == nil {
+		if err := m.db.Start(); err != nil {
+			return "", fmt.Errorf("数据库未启动: %v", err)
+		}
+	}
+
+	// Query filehelper messages from the past 24 hours
+	now := time.Now()
+	start := now.Add(-24 * time.Hour)
+	messages, err := m.db.GetMessages(start, now, "filehelper", "", "", 0, 0)
+	if err != nil {
+		return "", fmt.Errorf("查询消息失败: %v", err)
+	}
+
+	if len(messages) == 0 {
+		return "", fmt.Errorf("过去24小时内没有文件传输助手的消息")
+	}
+
+	// Build summary text and highlights
+	var summaryBuf strings.Builder
+	var highlights []string
+	for _, msg := range messages {
+		line := fmt.Sprintf("[%s] %s", msg.Time.Format("15:04"), msg.PlainTextContent())
+		summaryBuf.WriteString(line)
+		summaryBuf.WriteString("\n")
+
+		// Extract highlights from share messages (links, files, etc.)
+		if msg.Type == model.MessageTypeShare && msg.Contents != nil {
+			if title, ok := msg.Contents["title"].(string); ok && title != "" {
+				highlights = append(highlights, title)
+			}
+		}
+	}
+
+	summary := strings.TrimSpace(summaryBuf.String())
+
+	// Build POST payload
+	payload := map[string]any{
+		"source":        "wechat",
+		"group":         "文件传输助手",
+		"summary":       summary,
+		"highlights":    highlights,
+		"message_count": len(messages),
+		"ts":            now.Format(time.RFC3339),
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("序列化失败: %v", err)
+	}
+
+	// POST to ingest API
+	req, err := http.NewRequest("POST", "http://8.135.4.47:8787/ingest", bytes.NewBuffer(body))
+	if err != nil {
+		return "", fmt.Errorf("创建请求失败: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Relay-Token", "8256e4c58d8105a8192e8798afadc31c23cec2d780d1111fd65a2c83642e2d63")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("推送失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("推送失败, 状态码: %d", resp.StatusCode)
+	}
+
+	log.Info().Int("message_count", len(messages)).Msg("文件传输助手总结推送成功")
+	return summary, nil
+}
+
 func (m *Manager) CommandKey(configPath string, pid int, force bool, showXorKey bool) (string, error) {
 
 	var err error
@@ -364,7 +444,7 @@ func (m *Manager) CommandHTTPServer(configPath string, cmdConf map[string]any) e
 
 	m.db = database.NewService(m.sc)
 
-	m.http = http.NewService(m.sc, m.db)
+	m.http = chathttp.NewService(m.sc, m.db)
 
 	if m.sc.GetAutoDecrypt() {
 		if err := m.wechat.StartAutoDecrypt(); err != nil {

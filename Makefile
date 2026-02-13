@@ -3,7 +3,7 @@ GO := go
 ifeq ($(VERSION),)
 	VERSION := $(shell git describe --tags --always --dirty="-dev")
 endif
-LDFLAGS := -ldflags '-X "github.com/sjzar/chatlog/pkg/version.Version=$(VERSION)" -w -s'
+LDFLAGS := -ldflags '-X "github.com/DanielMao1/chatlog/pkg/version.Version=$(VERSION)" -w -s'
 
 PLATFORMS := \
 	darwin/amd64 \

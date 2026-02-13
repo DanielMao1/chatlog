@@ -5,14 +5,15 @@ import (
 	"context"
 	"encoding/hex"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/sjzar/chatlog/internal/errors"
-	"github.com/sjzar/chatlog/internal/wechat/decrypt"
-	"github.com/sjzar/chatlog/internal/wechat/key/darwin/glance"
-	"github.com/sjzar/chatlog/internal/wechat/model"
+	"github.com/DanielMao1/chatlog/internal/errors"
+	"github.com/DanielMao1/chatlog/internal/wechat/decrypt"
+	"github.com/DanielMao1/chatlog/internal/wechat/key/darwin/glance"
+	"github.com/DanielMao1/chatlog/internal/wechat/model"
 )
 
 const (
@@ -30,6 +31,15 @@ var V4KeyPatterns = []KeyPatternInfo{
 	},
 }
 
+// V4DerivedKeyPatterns 用于搜索已派生的密钥（WeChat >= 4.1.0）
+// 密钥后紧跟 "AXTM" 标记
+var V4DerivedKeyPatterns = []KeyPatternInfo{
+	{
+		Pattern: []byte{0x41, 0x58, 0x54, 0x4d, 0x00, 0x00, 0x00, 0x00}, // "AXTM\x00\x00\x00\x00"
+		Offsets: []int{-32},
+	},
+}
+
 var V4ImgKeyPatterns = []KeyPatternInfo{
 	{
 		Pattern: []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
@@ -38,17 +48,21 @@ var V4ImgKeyPatterns = []KeyPatternInfo{
 }
 
 type V4Extractor struct {
-	validator         *decrypt.Validator
-	dataKeyPatterns   []KeyPatternInfo
-	imgKeyPatterns    []KeyPatternInfo
-	processedDataKeys sync.Map // Thread-safe map for processed data keys
-	processedImgKeys  sync.Map // Thread-safe map for processed image keys
+	validator              *decrypt.Validator
+	dataKeyPatterns        []KeyPatternInfo
+	derivedKeyPatterns     []KeyPatternInfo
+	imgKeyPatterns         []KeyPatternInfo
+	processedDataKeys      sync.Map // Thread-safe map for processed data keys
+	processedDerivedKeys   sync.Map // Thread-safe map for processed derived keys
+	processedImgKeys       sync.Map // Thread-safe map for processed image keys
+	foundDerivedKeys       sync.Map // Thread-safe map for validated derived keys: keyHex -> true
 }
 
 func NewV4Extractor() *V4Extractor {
 	return &V4Extractor{
-		dataKeyPatterns: V4KeyPatterns,
-		imgKeyPatterns:  V4ImgKeyPatterns,
+		dataKeyPatterns:    V4KeyPatterns,
+		derivedKeyPatterns: V4DerivedKeyPatterns,
+		imgKeyPatterns:     V4ImgKeyPatterns,
 	}
 }
 
@@ -114,7 +128,7 @@ func (e *V4Extractor) Extract(ctx context.Context, proc *model.Process) (string,
 	}()
 
 	// Wait for result
-	var finalDataKey, finalImgKey string
+	var finalRawDataKey, finalImgKey string
 
 	for {
 		select {
@@ -122,25 +136,39 @@ func (e *V4Extractor) Extract(ctx context.Context, proc *model.Process) (string,
 			return "", "", ctx.Err()
 		case result, ok := <-resultChannel:
 			if !ok {
-				// Channel closed, all workers finished, return whatever keys we found
+				// All workers finished. Collect all derived keys from foundDerivedKeys.
+				var derivedKeys []string
+				e.foundDerivedKeys.Range(func(k, _ interface{}) bool {
+					derivedKeys = append(derivedKeys, k.(string))
+					return true
+				})
+
+				var finalDataKey string
+				if len(derivedKeys) > 0 {
+					finalDataKey = "derived:" + strings.Join(derivedKeys, ",")
+					log.Debug().Int("count", len(derivedKeys)).Msg("Total derived keys found")
+				} else if finalRawDataKey != "" {
+					finalDataKey = finalRawDataKey
+				}
+
 				if finalDataKey != "" || finalImgKey != "" {
 					return finalDataKey, finalImgKey, nil
 				}
 				return "", "", errors.ErrNoValidKey
 			}
 
-			// Update our best found keys
+			// Collect raw data key and image key from workers
 			if result[0] != "" {
-				finalDataKey = result[0]
+				finalRawDataKey = result[0]
 			}
 			if result[1] != "" {
 				finalImgKey = result[1]
 			}
 
-			// If we have both keys, we can return early
-			if finalDataKey != "" && finalImgKey != "" {
-				cancel() // Cancel remaining work
-				return finalDataKey, finalImgKey, nil
+			// Early return only for raw keys (derived keys need full scan)
+			if finalRawDataKey != "" && finalImgKey != "" {
+				cancel()
+				return finalRawDataKey, finalImgKey, nil
 			}
 		}
 	}
@@ -157,8 +185,8 @@ func (e *V4Extractor) findMemory(ctx context.Context, pid uint32, memoryChannel 
 
 // worker processes memory regions to find V4 version key
 func (e *V4Extractor) worker(ctx context.Context, memoryChannel <-chan []byte, resultChannel chan<- [2]string) {
-	// Track found keys
-	var dataKey, imgKey string
+	// Track found keys (raw key only; derived keys go to foundDerivedKeys sync.Map)
+	var rawDataKey, imgKey string
 
 	for {
 		select {
@@ -166,24 +194,28 @@ func (e *V4Extractor) worker(ctx context.Context, memoryChannel <-chan []byte, r
 			return
 		case memory, ok := <-memoryChannel:
 			if !ok {
-				// Memory scanning complete, return whatever keys we found
-				if dataKey != "" || imgKey != "" {
+				// Memory scanning complete, return whatever raw/img keys we found
+				if rawDataKey != "" || imgKey != "" {
 					select {
-					case resultChannel <- [2]string{dataKey, imgKey}:
+					case resultChannel <- [2]string{rawDataKey, imgKey}:
 					default:
 					}
 				}
 				return
 			}
 
-			// Search for data key
-			if dataKey == "" {
+			// Search for derived keys (skip if all databases already matched)
+			if !e.validator.AllDerivedKeysFound() {
+				e.SearchAllDerivedKeys(ctx, memory)
+			}
+
+			// Search for raw data key (older WeChat versions, only if no raw key found yet)
+			if rawDataKey == "" {
 				if key, ok := e.SearchKey(ctx, memory); ok {
-					dataKey = key
-					log.Debug().Msg("Data key found: " + key)
-					// Report immediately when found
+					rawDataKey = key
+					log.Debug().Msg("Raw data key found: " + key)
 					select {
-					case resultChannel <- [2]string{dataKey, imgKey}:
+					case resultChannel <- [2]string{rawDataKey, imgKey}:
 					case <-ctx.Done():
 						return
 					}
@@ -195,19 +227,12 @@ func (e *V4Extractor) worker(ctx context.Context, memoryChannel <-chan []byte, r
 				if key, ok := e.SearchImgKey(ctx, memory); ok {
 					imgKey = key
 					log.Debug().Msg("Image key found: " + key)
-					// Report immediately when found
 					select {
-					case resultChannel <- [2]string{dataKey, imgKey}:
+					case resultChannel <- [2]string{rawDataKey, imgKey}:
 					case <-ctx.Done():
 						return
 					}
 				}
-			}
-
-			// If we have both keys, exit worker
-			if dataKey != "" && imgKey != "" {
-				log.Debug().Msg("Both keys found, worker exiting")
-				return
 			}
 		}
 	}
@@ -352,6 +377,74 @@ func (e *V4Extractor) SearchImgKey(ctx context.Context, memory []byte) (string, 
 		}
 	}
 
+	return "", false
+}
+
+// SearchAllDerivedKeys 搜索所有已派生的数据密钥（WeChat >= 4.1.0）
+// 暴力扫描所有 8 字节对齐的 32 字节候选，用快速 PBKDF2-2 验证
+// 找到的密钥存储在 foundDerivedKeys 中，返回本次扫描找到的数量
+func (e *V4Extractor) SearchAllDerivedKeys(ctx context.Context, memory []byte) int {
+	if len(memory) < 32 {
+		return 0
+	}
+
+	count := 0
+	for pos := 0; pos+32 <= len(memory); pos += 8 {
+		// 定期检查取消和是否已找到所有密钥
+		if pos%(8*1024) == 0 {
+			select {
+			case <-ctx.Done():
+				return count
+			default:
+			}
+			if e.validator.AllDerivedKeysFound() {
+				return count
+			}
+		}
+
+		keyData := memory[pos : pos+32]
+
+		// 跳过全零或几乎全零的区域
+		zeroCount := 0
+		for _, b := range keyData {
+			if b == 0 {
+				zeroCount++
+			}
+		}
+		if zeroCount > 24 {
+			continue
+		}
+
+		keyHex := hex.EncodeToString(keyData)
+
+		if _, loaded := e.processedDerivedKeys.LoadOrStore(keyHex, true); loaded {
+			continue
+		}
+
+		if e.validator.ValidateDerivedKey(keyData) {
+			e.foundDerivedKeys.Store(keyHex, true)
+			count++
+			log.Debug().
+				Int("offset", pos).
+				Str("key", keyHex).
+				Msg("Derived data key found via brute-force scan")
+		}
+	}
+
+	return count
+}
+
+// SearchDerivedKey 搜索单个已派生的数据密钥（兼容接口，用于测试）
+func (e *V4Extractor) SearchDerivedKey(ctx context.Context, memory []byte) (string, bool) {
+	count := e.SearchAllDerivedKeys(ctx, memory)
+	if count > 0 {
+		var firstKey string
+		e.foundDerivedKeys.Range(func(k, _ interface{}) bool {
+			firstKey = k.(string)
+			return false
+		})
+		return firstKey, true
+	}
 	return "", false
 }
 

@@ -6,10 +6,10 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/sjzar/chatlog/internal/chatlog/conf"
-	"github.com/sjzar/chatlog/internal/chatlog/webhook"
-	"github.com/sjzar/chatlog/internal/model"
-	"github.com/sjzar/chatlog/internal/wechatdb"
+	"github.com/DanielMao1/chatlog/internal/chatlog/conf"
+	"github.com/DanielMao1/chatlog/internal/chatlog/webhook"
+	"github.com/DanielMao1/chatlog/internal/model"
+	"github.com/DanielMao1/chatlog/internal/wechatdb"
 )
 
 const (

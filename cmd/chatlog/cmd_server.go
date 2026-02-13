@@ -4,7 +4,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 
-	"github.com/sjzar/chatlog/internal/chatlog"
+	"github.com/DanielMao1/chatlog/internal/chatlog"
 )
 
 func init() {

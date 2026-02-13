@@ -7,9 +7,10 @@ import (
 	"hash"
 	"io"
 	"os"
+	"strings"
 
-	"github.com/sjzar/chatlog/internal/errors"
-	"github.com/sjzar/chatlog/internal/wechat/decrypt/common"
+	"github.com/DanielMao1/chatlog/internal/errors"
+	"github.com/DanielMao1/chatlog/internal/wechat/decrypt/common"
 
 	"golang.org/x/crypto/pbkdf2"
 )
@@ -72,12 +73,29 @@ func (d *V4Decryptor) Validate(page1 []byte, key []byte) bool {
 	return common.ValidateKey(page1, key, salt, d.hashFunc, d.hmacSize, d.reserve, d.pageSize, d.deriveKeys)
 }
 
+// ValidateDerivedKey 验证已派生的密钥（跳过 256K 次 PBKDF2）
+func (d *V4Decryptor) ValidateDerivedKey(page1 []byte, key []byte) bool {
+	if len(page1) < d.pageSize || len(key) != common.KeySize {
+		return false
+	}
+
+	salt := page1[:common.SaltSize]
+	return common.ValidateKey(page1, key, salt, d.hashFunc, d.hmacSize, d.reserve, d.pageSize, d.deriveDerivedKeys)
+}
+
+// deriveDerivedKeys 从已派生的加密密钥生成 MAC 密钥（跳过 enc_key 的 PBKDF2）
+func (d *V4Decryptor) deriveDerivedKeys(encKey []byte, salt []byte) ([]byte, []byte) {
+	macSalt := common.XorBytes(salt, 0x3a)
+	macKey := pbkdf2.Key(encKey, macSalt, 2, common.KeySize, d.hashFunc)
+	return encKey, macKey
+}
+
 // Decrypt 解密数据库
 func (d *V4Decryptor) Decrypt(ctx context.Context, dbfile string, hexKey string, output io.Writer) error {
-	// 解码密钥
-	key, err := hex.DecodeString(hexKey)
-	if err != nil {
-		return errors.DecodeKeyFailed(err)
+	// 检查是否为派生密钥（可能包含多个逗号分隔的密钥）
+	isDerived := strings.HasPrefix(hexKey, "derived:")
+	if isDerived {
+		hexKey = strings.TrimPrefix(hexKey, "derived:")
 	}
 
 	// 打开数据库文件并读取基本信息
@@ -86,13 +104,34 @@ func (d *V4Decryptor) Decrypt(ctx context.Context, dbfile string, hexKey string,
 		return err
 	}
 
-	// 验证密钥
-	if !d.Validate(dbInfo.FirstPage, key) {
-		return errors.ErrDecryptIncorrectKey
+	// 验证密钥并计算加密密钥
+	var encKey, macKey []byte
+	if isDerived {
+		// 尝试所有派生密钥，找到匹配当前数据库的那个
+		derivedKeyHexes := strings.Split(hexKey, ",")
+		for _, dkHex := range derivedKeyHexes {
+			dk, err := hex.DecodeString(dkHex)
+			if err != nil {
+				continue
+			}
+			if d.ValidateDerivedKey(dbInfo.FirstPage, dk) {
+				encKey, macKey = d.deriveDerivedKeys(dk, dbInfo.Salt)
+				break
+			}
+		}
+		if encKey == nil {
+			return errors.ErrDecryptIncorrectKey
+		}
+	} else {
+		key, err := hex.DecodeString(hexKey)
+		if err != nil {
+			return errors.DecodeKeyFailed(err)
+		}
+		if !d.Validate(dbInfo.FirstPage, key) {
+			return errors.ErrDecryptIncorrectKey
+		}
+		encKey, macKey = d.deriveKeys(key, dbInfo.Salt)
 	}
-
-	// 计算密钥
-	encKey, macKey := d.deriveKeys(key, dbInfo.Salt)
 
 	// 打开数据库文件
 	dbFile, err := os.Open(dbfile)

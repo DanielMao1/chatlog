@@ -3,7 +3,7 @@
 ## 概述
 优秀的 `prompt` 可以极大的提高 `chatlog` 使用体验，收集了部分群友分享的 `prompt`，供大家参考。  
 在处理聊天记录时，尽量选择上下文长度足够的 LLM，例如 `Gemini 2.5 Pro`、`Claude 3.5 Sonnet` 等。  
-欢迎大家在 [Discussions](https://github.com/sjzar/chatlog/discussions/47) 中分享自己的使用方式，共同进步。
+欢迎大家在 [Discussions](https://github.com/DanielMao1/chatlog/discussions/47) 中分享自己的使用方式，共同进步。
 
 
 ## 群聊总结

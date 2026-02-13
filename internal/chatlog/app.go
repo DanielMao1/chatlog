@@ -6,13 +6,13 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/sjzar/chatlog/internal/chatlog/ctx"
-	"github.com/sjzar/chatlog/internal/ui/footer"
-	"github.com/sjzar/chatlog/internal/ui/form"
-	"github.com/sjzar/chatlog/internal/ui/help"
-	"github.com/sjzar/chatlog/internal/ui/infobar"
-	"github.com/sjzar/chatlog/internal/ui/menu"
-	"github.com/sjzar/chatlog/internal/wechat"
+	"github.com/DanielMao1/chatlog/internal/chatlog/ctx"
+	"github.com/DanielMao1/chatlog/internal/ui/footer"
+	"github.com/DanielMao1/chatlog/internal/ui/form"
+	"github.com/DanielMao1/chatlog/internal/ui/help"
+	"github.com/DanielMao1/chatlog/internal/ui/infobar"
+	"github.com/DanielMao1/chatlog/internal/ui/menu"
+	"github.com/DanielMao1/chatlog/internal/wechat"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -200,6 +200,40 @@ func (a *App) inputCapture(event *tcell.EventKey) *tcell.EventKey {
 }
 
 func (a *App) initMenu() {
+
+	summarizeFileHelper := &menu.Item{
+		Index:       1,
+		Name:        "总结文件传输助手",
+		Description: "总结过去一天内容并推送到服务器",
+		Selected: func(i *menu.Item) {
+			modal := tview.NewModal().SetText("正在总结文件传输助手...")
+			a.mainPages.AddPage("modal", modal, true, true)
+			a.SetFocus(modal)
+
+			go func() {
+				summary, err := a.m.SummarizeFileHelper()
+
+				a.QueueUpdateDraw(func() {
+					if err != nil {
+						modal.SetText("推送失败: " + err.Error())
+					} else {
+						display := summary
+						if len(display) > 200 {
+							display = display[:200] + "..."
+						}
+						modal.SetText("推送成功\n\n" + display)
+					}
+
+					modal.AddButtons([]string{"OK"})
+					modal.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+						a.mainPages.RemovePage("modal")
+					})
+					a.SetFocus(modal)
+				})
+			}()
+		},
+	}
+
 	getDataKey := &menu.Item{
 		Index:       2,
 		Name:        "获取密钥",
@@ -442,6 +476,7 @@ func (a *App) initMenu() {
 		Selected:    a.selectAccountSelected,
 	}
 
+	a.menu.AddItem(summarizeFileHelper)
 	a.menu.AddItem(getDataKey)
 	a.menu.AddItem(decryptData)
 	a.menu.AddItem(httpServer)

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/sjzar/chatlog/pkg/util"
+	"github.com/DanielMao1/chatlog/pkg/util"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -31,7 +31,7 @@ func initTuiLog(cmd *cobra.Command, args []string) {
 
 	debug, _ := cmd.Flags().GetBool("debug")
 	if debug {
-		logpath := util.DefaultWorkDir("")
+		logpath := "/Users/danielmao/chatlog/log"
 		util.PrepareDir(logpath)
 		logFD, err := os.OpenFile(filepath.Join(logpath, "chatlog.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, os.ModePerm)
 		if err != nil {
